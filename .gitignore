@@ -1,0 +1,25 @@
+# Cloned by ./setup.sh — re-creatable, no need to track
+/amlogic-boot-fip/
+
+# Build outputs from ./fip-rebuild.sh
+/out/
+
+# Raw ad-hoc device dumps — kept out of git as bulky working files.
+# The canonical stock boot-partition image IS tracked, as
+# stock.bootloader.bin (full 4 MiB: info region + BL2 + vendor FIP). It's
+# common stock firmware, not device-unique — the same bytes already appear
+# in public full-firmware dumps, so there's nothing sensitive about it.
+/bootloader.dump
+*.dump
+
+# Built boot-partition images (also user-specific, includes their u-boot)
+/boot_partition*.bin
+/u-boot.bin
+
+# Editor noise
+*.swp
+*~
+.idea/
+.vscode/
+__pycache__/
+*.pyc

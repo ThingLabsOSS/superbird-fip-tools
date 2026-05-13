@@ -1,0 +1,59 @@
+From f7535bdeac5f6cf9221de99453563b6f81750bee Mon Sep 17 00:00:00 2001
+From: lmore377 <jessica@corvuscollective.org>
+Date: Wed, 13 May 2026 21:21:46 -0700
+Subject: [PATCH 1/2] plat/amlogic: carthing-specific eFuse user-area base
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Upstream's plat/amlogic/common/aml_efuse.c hardcodes EFUSE_BASE 0x140
+as the start of the user-area within SCP-mediated eFuse reads. That
+value matches some Amlogic reference designs but is wrong for the
+Spotify Car Thing (S905D2, Toshiba THGBMNG5D1LBAIL eMMC + vendor SCP
+firmware): reads at user_offset=18 (where the usid lives per
+Spotify's user-area layout) return data ~96 bytes off, landing in the
+mac_bt region.
+
+Established empirically by scanning SCP eFuse offsets via u-boot's
+`sm efuseread` and locating the known content (mac_bt OUI 30:e3:d6,
+the ASCII serial, the f_serial date-code). usid backsolves to a
+user-area base of 0x1a0.
+
+Aftermath: `printenv serial#` in u-boot returns the per-unit eFuse
+usid (matches what `adb get-serialno` reports on stock firmware),
+and the same value lands as the iSerial USB gadget descriptor.
+
+This needs an upstream story before submission — should probably be
+a DT property (`amlogic,efuse-base`) read by the SCPI driver, since
+different boards have different layouts. Logged here as a working
+local patch; will revisit when porting to mainline kernel work.
+---
+ plat/amlogic/common/aml_efuse.c | 12 +++++++++++-
+ 1 file changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/plat/amlogic/common/aml_efuse.c b/plat/amlogic/common/aml_efuse.c
+index 00884eb..3c3b83c 100644
+--- a/plat/amlogic/common/aml_efuse.c
++++ b/plat/amlogic/common/aml_efuse.c
+@@ -8,7 +8,17 @@
+ 
+ #include "aml_private.h"
+ 
+-#define EFUSE_BASE	0x140
++/*
++ * EFUSE_BASE = 0x1a0 matches vendor BL31's convention on Spotify Car
++ * Thing (S905D2). Established empirically by scanning SCP eFuse offsets
++ * with `sm efuseread`: known content (mac_bt OUI 30:e3:d6, usid ASCII
++ * serial, f_serial date code) appears at SCP offsets 0x1a6, 0x1b2,
++ * 0x1c2 respectively — backsolves to user-area base 0x1a0 with the
++ * Spotify layout (offset 0 = mac, 6 = mac_bt, 12 = mac_wifi,
++ * 18 = usid, 34 = f_serial). Upstream default 0x140 is for a different
++ * Amlogic board; on this chip+SCP combo it returns data ~96 bytes off.
++ */
++#define EFUSE_BASE	0x1a0
+ #define EFUSE_SIZE	0xC0
+ 
+ uint64_t aml_efuse_read(void *dst, uint32_t offset, uint32_t size)
+-- 
+2.47.3
+

@@ -1,0 +1,97 @@
+From 4b4c29829f86569690a17c8c5c689ca9a481676f Mon Sep 17 00:00:00 2001
+From: lmore377 <lmore377@gmail.com>
+Date: Sun, 24 May 2026 23:50:59 -0700
+Subject: [PATCH 2/3] plat/amlogic/g12a: EL3 SMC to set the POC reboot-reason
+ in AO_SEC_GP_CFG0
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+AML_SM_SET_REBOOT_REASON (0x82000099) RMW-writes the POC nibble in
+AO_SEC_GP_CFG0[7:4] (what stock BL2 reads), preserving the [31:16] DDR-size
+bits. Reachable from u-boot via `sm set_reboot_reason <v>` (matches
+MESON_SMC_CMD_SET_REBOOT_REASON) so it can be exercised without a u-boot
+rebuild.
+
+Came out of probing whether the POC reboot-reason could send the SoC to
+mask-ROM from software. It can't (stock BL2 on our chain ignores POC for
+USB entry — the SCP USB_BOOT path is what works, see the maskrom hook), but
+the capability is a keeper: EL3 *can* write AO_SEC_GP_CFG0 cleanly (unlike
+the adjacent SD_CFG15, which hangs), so the POC reboot-reason is settable
+from BL31 if a stock-BL2 fast-path is ever wanted.
+---
+ plat/amlogic/common/aml_sip_svc.c | 25 +++++++++++++++++++++++++
+ plat/amlogic/g12a/g12a_def.h      |  7 +++++++
+ 2 files changed, 32 insertions(+)
+
+diff --git a/plat/amlogic/common/aml_sip_svc.c b/plat/amlogic/common/aml_sip_svc.c
+index ab4c015..54c2fb8 100644
+--- a/plat/amlogic/common/aml_sip_svc.c
++++ b/plat/amlogic/common/aml_sip_svc.c
+@@ -6,6 +6,7 @@
+ 
+ #include <common/debug.h>
+ #include <common/runtime_svc.h>
++#include <drivers/console.h>
+ #include <lib/mmio.h>
+ #include <platform_def.h>
+ #include <stdint.h>
+@@ -80,6 +81,30 @@ static uintptr_t aml_sip_handler(uint32_t smc_fid,
+ 	case AML_SM_GET_CHIP_ID:
+ 		SMC_RET1(handle, aml_sip_get_chip_id(x1));
+ 
++	case AML_SM_SET_REBOOT_REASON:
++	{
++		/*
++		 * EL3-POC maskrom probe: RMW the POC reboot-reason nibble in
++		 * AO_SEC_GP_CFG0[7:4] (what the stock BL2 reads). EL2 writes
++		 * to this AO reg fault->reset; EL3 writes to the *adjacent*
++		 * SD_CFG15 hung the bus — does this AO_SEC reg behave the
++		 * same? Preserve [31:16] DDR-size bits. NOTICE-bracketed: if
++		 * we see "writing..." with no "post", the EL3 write hung.
++		 */
++		uint32_t poc = (uint32_t)x1 & 0xfU;
++		uint32_t v = mmio_read_32(AML_AO_SEC_GP_CFG0);
++
++		NOTICE("BL31: POC GP_CFG0 pre=0x%x, set[7:4]=%u, writing...\n",
++		       v, poc);
++		console_flush();
++		v &= ~(0xfU << 4);
++		v |= poc << 4;
++		mmio_write_32(AML_AO_SEC_GP_CFG0, v);
++		NOTICE("BL31: POC GP_CFG0 post=0x%x\n",
++		       mmio_read_32(AML_AO_SEC_GP_CFG0));
++		SMC_RET1(handle, 0);
++	}
++
+ 	default:
+ 		ERROR("BL31: Unhandled SIP SMC: 0x%08x\n", smc_fid);
+ 		break;
+diff --git a/plat/amlogic/g12a/g12a_def.h b/plat/amlogic/g12a/g12a_def.h
+index d032815..1e934cf 100644
+--- a/plat/amlogic/g12a/g12a_def.h
++++ b/plat/amlogic/g12a/g12a_def.h
+@@ -94,6 +94,9 @@
+ 
+ #define AML_AO_RTI_STATUS_REG3			UL(0xFF80001C)
+ #define AML_AO_RTI_SCP_STAT			UL(0xFF80023C)
++/* AO_SEC_GP_CFG0: [7:4] = POC reboot-reason nibble the stock BL2 reads;
++ * [31:16] = DDR-size encoding (preserve on RMW). EL3-POC maskrom probe. */
++#define AML_AO_SEC_GP_CFG0			UL(0xFF800240)
+ #define AML_AO_RTI_SCP_READY_OFF		U(0x14)
+ #define AML_A0_RTI_SCP_READY_MASK		U(3)
+ #define AML_AO_RTI_SCP_IS_READY(v)					\
+@@ -123,6 +126,10 @@
+ #define AML_SM_JTAG_ON				U(0x82000040)
+ #define AML_SM_JTAG_OFF				U(0x82000041)
+ #define AML_SM_GET_CHIP_ID			U(0x82000044)
++/* Carthing-local: EL3-POC maskrom probe — x1 = 4-bit value written to
++ * AO_SEC_GP_CFG0[7:4]. Matches u-boot's MESON_SMC_CMD_SET_REBOOT_REASON
++ * so `sm set_reboot_reason <v>` triggers it without a u-boot rebuild. */
++#define AML_SM_SET_REBOOT_REASON		U(0x82000099)
+ 
+ #define AML_JTAG_STATE_ON			U(0)
+ #define AML_JTAG_STATE_OFF			U(1)
+-- 
+2.47.3
+

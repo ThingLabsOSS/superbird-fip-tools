@@ -1,0 +1,9 @@
+# built binary
+/fip-tool
+/fip-tool.exe
+
+# editor noise
+*.swp
+*~
+.idea/
+.vscode/

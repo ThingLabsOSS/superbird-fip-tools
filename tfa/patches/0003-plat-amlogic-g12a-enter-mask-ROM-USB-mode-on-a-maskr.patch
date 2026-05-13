@@ -1,0 +1,141 @@
+From f574a02ab4753f7be32da47dcc35bc20fa9d952b Mon Sep 17 00:00:00 2001
+From: lmore377 <lmore377@gmail.com>
+Date: Sun, 24 May 2026 23:51:22 -0700
+Subject: [PATCH 3/3] plat/amlogic/g12a: enter mask-ROM USB mode on a "maskrom"
+ reboot reason
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+g12a_system_reset() now checks PREG_STICKY_REG3 for a tagged MASKROM reboot
+reason (0x5242a14d) stashed by u-boot/Linux. When present, it one-shot
+clears the reason (so a later plain reboot is normal — no wedge) and sends
+the SCP a SCPI USB_BOOT command on the low-priority (channel 4) mailbox
+before the existing SCPI software reboot. The SCP stays powered across the
+software reset and re-arms the bootROM's USB-first window, so the SoC comes
+up in mask-ROM USB download mode (1b8e:c003) instead of booting — no
+buttons.
+
+Channel 4 is the non-secure AP<->SCP mailbox, distinct from the secure
+channel 3/0 TF-A's own SCPI uses, so there's no collision; the handshake
+waits are bounded so a wedged SCP can't block the reset path. Recovery is a
+hardware reset-pin reset (resets the SCP) or a cold power cycle.
+
+This is the firmware half of `maskrom` / `fastboot oem maskrom` /
+(future) `reboot maskrom` — see the superbird-uboot side and
+yocto-scratch/reboot-maskrom-kernel-side.md. Verified end-to-end on hardware.
+---
+ plat/amlogic/g12a/g12a_def.h | 24 ++++++++++++++++
+ plat/amlogic/g12a/g12a_pm.c  | 54 ++++++++++++++++++++++++++++++++++++
+ 2 files changed, 78 insertions(+)
+
+diff --git a/plat/amlogic/g12a/g12a_def.h b/plat/amlogic/g12a/g12a_def.h
+index 1e934cf..8048f36 100644
+--- a/plat/amlogic/g12a/g12a_def.h
++++ b/plat/amlogic/g12a/g12a_def.h
+@@ -109,6 +109,30 @@
+ #define AML_HIU_MAILBOX_SET_3			UL(0xFF63C428)
+ #define AML_HIU_MAILBOX_STAT_3			UL(0xFF63C42C)
+ #define AML_HIU_MAILBOX_CLR_3			UL(0xFF63C430)
++/*
++ * Channel 4 = the AP->SCP *low-priority* (non-secure) mailbox. TF-A's own
++ * SCPI uses the secure channel 3/0 above; channel 4 is independent, so a
++ * poke here doesn't disturb the SCPI reboot that follows it. This is the
++ * channel the bootROM USB-boot request rides (vendor set_boot_first_timeout).
++ */
++#define AML_HIU_MAILBOX_SET_4			UL(0xFF63C434)
++#define AML_HIU_MAILBOX_STAT_4			UL(0xFF63C438)
++/* AP->SCP low-priority payload (= AML_TZRAM_BASE 0xFFFA0000 + 0x47200; sits
++ * just below the secure payloads at 0xFFFE7800/7A00, so it's already mapped). */
++#define AML_MHU_LOW_AP_TO_SCP_PAYLOAD		UL(0xFFFE7200)
++/* SCPI cmd: tell the SCP to drop the bootROM into USB download on this reset. */
++#define AML_SCPI_CMD_USB_BOOT			U(0xB0)
++
++/*
++ * Reboot-reason carrier shared with u-boot + Linux: PREG_STICKY_REG3, tagged
++ * with a magic so stale/garbage isn't taken for a reason (see the carthing
++ * reboot-bootloader doc). We consume only the MASKROM reason here, at reset
++ * time; u-boot consumes BOOTLOADER/FASTBOOT/RECOVERY on the next boot.
++ */
++#define AML_PREG_STICKY_REG3			UL(0xFF6345CC)
++#define AML_REBOOT_REASON_MAGIC			U(0x5242A100)	/* "RB" tag, bits 31:8 */
++#define AML_REBOOT_REASON_MAGIC_MASK		U(0xFFFFFF00)
++#define AML_REBOOT_REASON_MASKROM		U(0x4D)		/* 'M' — carthing-local */
+ 
+ #define AML_SHA_DMA_BASE			UL(0xFF63E000)
+ #define AML_SHA_DMA_DESC			(AML_SHA_DMA_BASE + 0x08)
+diff --git a/plat/amlogic/g12a/g12a_pm.c b/plat/amlogic/g12a/g12a_pm.c
+index 1203e3c..8881beb 100644
+--- a/plat/amlogic/g12a/g12a_pm.c
++++ b/plat/amlogic/g12a/g12a_pm.c
+@@ -43,6 +43,41 @@ static void g12a_pm_reset(u_register_t mpidr)
+ 	mmio_write_32(cpu_mailbox_addr, 0);
+ }
+ 
++/*
++ * Ask the SCP to drop the bootROM into USB download mode ("maskrom",
++ * 1b8e:c003) on this reset. Mirrors the vendor set_boot_first_timeout(): a
++ * SCPI USB_BOOT command on the low-priority (channel 4) mailbox. The SCP stays
++ * powered across a *software* reset, so it can re-arm the ROM's USB-first
++ * window — which is why this only works when g12a_system_reset() then performs
++ * the software SCPI reboot below. (A hardware reset-pin pulse resets the SCP
++ * too, clearing the request; that's the recovery path, not this one.)
++ *
++ * Channel 4 is the non-secure AP<->SCP mailbox, distinct from the secure
++ * channel 3/0 the SCPI reboot uses, so the two don't collide. Waits are
++ * bounded so a wedged SCP can never block the reset path.
++ */
++static void g12a_scp_request_usb_boot(void)
++{
++	uint32_t timeout;
++
++	for (timeout = 1000000U; timeout != 0U; timeout--) {
++		if (mmio_read_32(AML_HIU_MAILBOX_STAT_4) == 0U) {
++			break;
++		}
++	}
++
++	/* payload word0 = 0 (no timeout arg), then ring the doorbell */
++	mmio_write_32(AML_MHU_LOW_AP_TO_SCP_PAYLOAD, 0U);
++	mmio_write_32(AML_HIU_MAILBOX_SET_4, AML_SCPI_CMD_USB_BOOT);
++
++	/* wait for the SCP to consume it (bounded) */
++	for (timeout = 1000000U; timeout != 0U; timeout--) {
++		if (mmio_read_32(AML_HIU_MAILBOX_STAT_4) == 0U) {
++			break;
++		}
++	}
++}
++
+ static void __dead2 g12a_system_reset(void)
+ {
+ 	INFO("BL31: PSCI_SYSTEM_RESET\n");
+@@ -59,6 +94,25 @@ static void __dead2 g12a_system_reset(void)
+ 
+ 	mmio_write_32(AML_AO_RTI_STATUS_REG3, status);
+ 
++	/*
++	 * maskrom-on-reset: if a "maskrom" reboot reason was stashed in
++	 * PREG_STICKY_REG3 (u-boot `maskrom` command / `fastboot oem console
++	 * "maskrom"` / Linux `reboot maskrom`), ask the SCP to send us into USB
++	 * download on this reset. One-shot — clear the reason first so a later
++	 * plain reboot boots normally (no wedge).
++	 */
++	{
++		uint32_t rr = mmio_read_32(AML_PREG_STICKY_REG3);
++
++		if ((rr & AML_REBOOT_REASON_MAGIC_MASK) == AML_REBOOT_REASON_MAGIC &&
++		    (rr & 0xFFU) == AML_REBOOT_REASON_MASKROM) {
++			mmio_write_32(AML_PREG_STICKY_REG3, 0U);
++			NOTICE("BL31: maskrom reboot reason -> SCP USB_BOOT\n");
++			console_flush();
++			g12a_scp_request_usb_boot();
++		}
++	}
++
+ 	ret = aml_scpi_sys_power_state(SCPI_SYSTEM_REBOOT);
+ 
+ 	if (ret != 0) {
+-- 
+2.47.3
+
