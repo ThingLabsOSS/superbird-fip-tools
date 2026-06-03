@@ -33,11 +33,13 @@ What this does NOT handle
 -------------------------
 
   - **BL33 LZ4 decompression**: vendor BL33 is LZ4-compressed inside the
-    AES envelope. BL31 decompresses it at runtime ("BL33 decompress pass"
-    log line). The compressed payload doesn't carry a standard LZ4 frame
-    magic so dctx hunting for it doesn't help; if you want the plaintext
-    BL33 binary it's easier to RAM-dump it from a live unit at TEXT_BASE +
-    relocation offset (~0x17E42000). See `dump_vendor_bl33.py`.
+    AES envelope, in Amlogic's "LZ4C" container (BL31 inflates it at
+    runtime — "BL33 decompress pass" log line). It carries no standard
+    LZ4 frame magic, but the container is plain LZ4 block format behind a
+    small custom header and *does* unpack statically — no RAM-dump needed.
+    This Python tool doesn't implement it; use the Go tool instead:
+    `fip-tool decrypt -bootloader -bl33 -o u-boot.bin bootloader.dump`
+    (see `fip-tool/lz4unwrap.go` for the format).
 
   - **RSA signature verification**: we extract the AES key only. RSA
     private-key reconstruction from `aml-user-key.sig` is out of scope —

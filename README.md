@@ -106,12 +106,24 @@ python/aml_decrypt.py --raw blob.enc -o blob.bin
 python/aml_decrypt.py --show-key dummy
 ```
 
-**What this CAN'T do**: BL33 inside the FIP is LZ4-compressed before
-AES, and BL31 decompresses it at runtime — there's no public spec for
-the Amlogic LZ4 wrapper format. If you want the plaintext BL33 binary,
-RAM-dump it from a live device at the relocation address (typically
-~0x17E42000 on G12A) — see `docs/dump-vendor-bl33.md`. The decryptor
-will get you everything else (FIP HDR, BL30, BL31, signing tables).
+**Extracting the plaintext BL33 (u-boot):** BL33 is LZ4-compressed
+*before* AES, in Amlogic's `LZ4C` container (the wrapper
+`aml_encrypt_g12a --compress lz4` emits and BL31 inflates at runtime).
+That container is just LZ4 block format behind a small custom header, so
+it unpacks statically — no live-device RAM-dump needed. Use the Go tool:
+
+```bash
+# pull the decompressed vendor u-boot straight out of a bootloader.dump
+fip-tool/fip-tool decrypt -bootloader -bl33 -o u-boot.bin bootloader.dump
+# …or out of a standalone fip_a / fip_b partition
+fip-tool/fip-tool decrypt -fip -bl33 -o u-boot.bin fip_a.dump
+```
+
+It verifies the SHA-256 the container embeds over the plaintext (and
+falls back to an exact compressed-byte-count check on the OTA builds
+that leave that digest field zero). `aml_decrypt.py` stops at the
+compressed FIP body; everything else (FIP HDR, BL30, BL31, signing
+tables) comes out of either tool.
 
 **Provenance**: this just uses the public key Spotify open-sourced via
 `spsgsb/uboot:board/amlogic/superbird_production/aml-user-key.sig`. The

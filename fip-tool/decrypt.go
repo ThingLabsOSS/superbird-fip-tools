@@ -54,6 +54,7 @@ func cmdDecrypt(args []string) error {
 	mBoot := fs.Bool("bootloader", false, "treat input as bootloader.dump (BL2 + FIP body)")
 	mDtb := fs.Bool("dtb", false, "treat input as a raw DTB partition dump")
 	mRaw := fs.Bool("raw", false, "raw AES-256-CBC zero-IV decrypt, no structure parsing")
+	mBl33 := fs.Bool("bl33", false, "extract + LZ4-decompress the BL33 (u-boot) to -o (verifies SHA-256)")
 	mapSecs := fs.Bool("map-sections", false, "print a map of FIP sub-sections (@AML anchors)")
 	scanFdts := fs.Bool("scan-fdts", false, "scan plaintext for FDT blobs")
 	fs.Usage = func() {
@@ -63,6 +64,7 @@ Usage:
   fip-tool decrypt [flags] <input>
 
 Input type is auto-detected; override with --fip/--bootloader/--dtb/--raw.
+Use --bl33 to pull the decompressed u-boot (BL33) out instead of the FIP.
 
 Flags:
 `)
@@ -119,6 +121,31 @@ Flags:
 	if err != nil {
 		return err
 	}
+
+	if *mBl33 {
+		if kind != "bootloader_dump" && kind != "fip_body" {
+			return fmt.Errorf("--bl33 requires a bootloader.dump or FIP body input (got %s)", kind)
+		}
+		ub, info, err := extractBL33(pt)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(*out, ub, 0o644); err != nil {
+			return err
+		}
+		integrity := "SHA-256 verified"
+		if !info.Verified {
+			integrity = "byte-exact decode (digest field absent, unverified)"
+		}
+		fmt.Fprintf(os.Stderr, "BL33: LZ4-decompressed %d -> %d bytes (built %s), %s\n",
+			info.Comp, info.Ucomp, info.Timestamp, integrity)
+		if v := ubootVersion(ub); v != "" {
+			fmt.Fprintf(os.Stderr, "BL33: %s\n", v)
+		}
+		fmt.Fprintf(os.Stderr, "wrote %d bytes to %s\n", len(ub), *out)
+		return nil
+	}
+
 	if err := os.WriteFile(*out, pt, 0o644); err != nil {
 		return err
 	}

@@ -6,7 +6,7 @@ replacing the Python/bash device-side tooling. Four subcommands:
 | command | what it does | replaces |
 |---------|--------------|----------|
 | `fip-tool ramboot <fip>` | RAM-load a signed FIP via mask-ROM → BL2 → AMLC | `superbird-tool --burn_mode` |
-| `fip-tool decrypt` | AES-256-CBC decrypt of an Amlogic FIP / DTB / raw blob | `aml_decrypt.py` |
+| `fip-tool decrypt` | AES-256-CBC decrypt of a FIP / DTB / raw blob; `-bl33` decompresses vendor u-boot | `aml_decrypt.py` |
 | `fip-tool flash` | build (and optionally flash) a boot0/boot1 image | `flash_boot_partition.py` |
 | `fip-tool sign` | pack + AES-encrypt + RSA-sign a u-boot into a bootable FIP | `fip-rebuild.sh` |
 
@@ -25,6 +25,7 @@ fip-tool ramboot ../out/u-boot.bin.spotify.encrypt   # -v logs the AMLC stream
 fip-tool decrypt -o /tmp/fip.bin ../out/u-boot.bin.spotify.encrypt
 fip-tool decrypt --show-key                          # print the AES-256 key
 fip-tool decrypt -bootloader -map-sections -o /tmp/x bootloader.dump
+fip-tool decrypt -bootloader -bl33 -o u-boot.bin bootloader.dump  # decompress vendor BL33
 
 # flash — build a boot-partition image (then flash via fastboot, or device-write)
 fip-tool flash ours --dry-run -o /tmp/boot.bin       # stock BL2 + your signed FIP
@@ -42,7 +43,10 @@ Note: Go's `flag` package wants flags **before** the positional argument
 - **ramboot (burn)**: pure Go, **hardware-verified** (2026-05-23) — a real
   Car Thing streamed a full FIP and came up as our u-boot (`18d1:fada`).
 - **decrypt**: pure Go, verified **byte-identical** to `aml_decrypt.py` on
-  `bootloader.dump`, signed FIPs, and `--raw`.
+  `bootloader.dump`, signed FIPs, and `--raw`. `-bl33` LZ4-decompresses the
+  vendor u-boot and checks it against the SHA-256 the `LZ4C` container
+  embeds (byte-exact on the 2021 boot0/1 image and the 2024 fip_a/fip_b
+  mirror builds).
 - **flash**: pure Go image builder, verified **byte-identical** to
   `flash_boot_partition.py` (`ours`/`stock`). The device-write path uses
   vendor burn-mode bulkcmds (mirrors the Python; not re-tested on hardware).
