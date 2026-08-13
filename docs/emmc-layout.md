@@ -88,17 +88,27 @@ omitting the checksum field itself at index 127 (offsets 508..511).
 
 Modular arithmetic (32-bit wrap), little-endian.
 
-### Why BL2 needs this
+### What BL2 actually does with this: nothing
 
-After mask ROM hands off, BL2 reads the info_sector to discover where
-DDR-init parameters live in the user-area reserved region. The
-`rsv_base_addr` + `ddr.addr` tell BL2 to seek to byte offset
-`0x02400000 + 0x800000 = 0x02c00000` for the DDR partition's content.
-BL2 then reads `ddr.size` * 512 = 2048 bytes from there, parses DDR
-config, and initializes DDR.
+The `rsv_base_addr` + `ddr.addr` fields nominally point BL2 at DDR-init
+parameters in the user area's reserved region. They do not: **BL2 never
+reads this sector.** Its only job is to occupy LBA 0 so that BL2 itself
+begins at LBA 1. The DDR timings that actually run are compiled into BL2
+(vendor `firmware/timing.c`).
 
-Without a valid info_sector, BL2 can't find the DDR config and hangs
-after the first few stage prints.
+Verified on hardware 2026-08-12, escalating, on both slots each time:
+zeroing `ddr.addr`/`ddr.size` with the checksum recomputed boots; zeroing
+all 512 bytes boots; filling all 512 bytes with non-zero garbage, a
+nonsense version and a deliberately wrong checksum also boots.
+
+We still write a well-formed info_sector — it is free, and it keeps the
+image byte-compatible with vendor tooling that does parse it. But nothing
+in the boot path depends on its contents.
+
+On a terraformed unit the pointer is meaningless anyway: rsv_base
+`0x12000` + ddr.addr `0x4000` lands at LBA `0x16000`, which is inside
+`boot_a` under our GPT layout, so BL2 would have been reading a FAT
+filesystem as "DDR timing" on every boot.
 
 ## User-area layout (Amlogic MPT-defined)
 

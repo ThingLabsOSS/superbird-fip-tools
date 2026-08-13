@@ -15,7 +15,7 @@
   sudo python3 -m pip install git+https://github.com/superna9999/pyamlboot
   ```
 - `superbird-tool` available somewhere
-  (<https://github.com/thinglabsoss/superbird-tool>). The flash script
+  (<https://github.com/ThingLabsOSS/superbird-tool>). The flash script
   here uses pyamlboot directly and doesn't depend on superbird-tool's
   Python library, but you'll use superbird-tool's `--burn_mode` and
   optionally `--dump_partition`.
@@ -65,7 +65,7 @@ ls -la u-boot.bin                 # output you'll feed to `fip-tool sign`
 ```
 
 If you're starting from scratch, see
-<https://github.com/elle/superbird-uboot> for a working mainline u-boot
+<https://github.com/ThingLabsOSS/superbird-uboot> for a working mainline u-boot
 fork with Car Thing support already added.
 
 ## Step 3 — wrap u-boot.bin in a signed FIP

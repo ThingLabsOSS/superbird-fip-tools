@@ -19,9 +19,9 @@ while keeping the device bootable.
                                   │
                                   v
               ┌────────────────────────────────────────────┐
-              │ BL2 reads info_sector at LBA 0 of boot1     │
-              │ → finds DDR-param partition in user area    │
-              │ → initializes DDR                           │
+              │ BL2 starts at LBA 1 (LBA 0 is a spacer)     │
+              │ → initializes DDR from timings compiled     │
+              │   into BL2 itself                           │
               └─────────────────┬───────────────────────────┘
                                 │
                                 v

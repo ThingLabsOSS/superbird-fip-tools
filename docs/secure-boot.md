@@ -99,8 +99,27 @@ A single `CHK:1F` followed by `READ:0;0.0;0.0` in the boot tag is
 **normal and expected**. Three CHK:1F in a row means mask ROM gave up
 on eMMC.
 
+## Where the AES key lives, and how it was found
+
+The AES-256 key sits at offsets **0x1173** and **0x1B20** inside
+`aml-user-key.sig` (two redundant copies). Both `fip-tool` and the legacy
+`aml_decrypt.py` extract it at every invocation rather than hardcoding it, so
+the tools stay self-contained against the key file.
+
+Recovering it did not need the vendor binary reversed:
+
+1. `strace` on `aml_encrypt_g12a --bootsig` showed it reads the key file in
+   full — no offset-specific access, the bundle is parsed in-process. So the
+   offset had to be found some other way.
+2. The first 16-byte plaintext block of every encrypted FIP section is
+   all-zeros (the section's MAC slot). That makes the first ciphertext block
+   `C[0] = AES_ENC(K, 0)` for the unknown key `K`.
+3. Compute `AES_ENC(window, 0)` for every 16- and 32-byte window in
+   `aml-user-key.sig` and compare against the observed `C[0]`.
+4. The matching 32-byte window is at 0x1173, and is the AES-256 key.
+
 ## Related
 
-- `docs/boot-chain.md` — BL2's 4-path FIP fallback chain
-- `docs/emmc-layout.md` — physical layout, info_sector struct
+- `boot-chain.md` — BL2's 4-path FIP fallback chain
+- `emmc-layout.md` — physical layout, info_sector struct
 - `keys/NOTICE.md` — provenance of `aml-user-key.sig`

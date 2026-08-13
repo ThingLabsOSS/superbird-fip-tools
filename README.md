@@ -103,7 +103,7 @@ python/aml_decrypt.py --dtb dtb_partition.bin -o /tmp/dtbs.bin --scan-fdts
 python/aml_decrypt.py --raw blob.enc -o blob.bin
 
 # print just the AES key (extracted from the bundle)
-python/aml_decrypt.py --show-key dummy
+python/aml_decrypt.py --show-key dummy -o /dev/null
 ```
 
 **Extracting the plaintext BL33 (u-boot):** BL33 is LZ4-compressed
@@ -142,7 +142,7 @@ the top of `aml_decrypt.py` for full forensic trail.
   builds, and the input `aml_decrypt.py` expects. (If you'd rather use
   your own unit's image: `superbird-tool --dump_partition bootloader
   bootloader.dump`, then pass it via `--stock-bootloader`.)
-- **[`superbird-tool`](https://github.com/thinglabsoss/superbird-tool)**
+- **[`superbird-tool`](https://github.com/ThingLabsOSS/superbird-tool)**
   for getting the device into USB Burn Mode and for general device
   manipulation. The flash script here uses `pyamlboot` directly so it
   doesn't depend on superbird-tool's library, but you still need
@@ -245,7 +245,7 @@ The leaked key was already public — this just makes using it ergonomic.
 
 ## Related projects
 
-- [superbird-tool](https://github.com/thinglabsoss/superbird-tool) —
+- [superbird-tool](https://github.com/ThingLabsOSS/superbird-tool) —
   general device-manipulation tool, `--burn_mode`, partition
   dump/restore, chainload via USB.
 - [LibreELEC/amlogic-boot-fip](https://github.com/LibreELEC/amlogic-boot-fip) —

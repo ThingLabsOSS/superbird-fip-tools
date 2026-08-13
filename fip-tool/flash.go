@@ -23,6 +23,9 @@ const (
 	// "MMC: block number 0x1001 exceeds max(0x1000)".
 	bootloaderContentSz = 2*1024*1024 - infoSectorSize // 4095 sectors
 	totalSectors        = (infoSectorSize + bootloaderContentSz) / 512
+	// Scratch DRAM for staging the image before it is written to eMMC. Clear
+	// of the kernel/initrd load addresses vendor u-boot uses, so a staged
+	// image survives a boot attempt. Same value as superbird-tool's ADDR_TMP.
 	dramStagingAddr     = 0x13000000
 )
 

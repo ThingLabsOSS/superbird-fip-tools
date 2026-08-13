@@ -1,74 +1,31 @@
-#!/usr/bin/env python3
-"""
-Amlogic G12A FIP / DTB partition decryptor.
+"""Amlogic G12A FIP / DTB partition decryptor (legacy Python path).
 
-This tool decrypts Amlogic-signed firmware blobs using Spotify's leaked
-production key (aml-user-key.sig in spsgsb/uboot, mirror at
-fip_unpack/keys/aml-user-key.sig in this tree). Useful for static analysis
-of vendor BL33, DTB, kernel images, etc. across multiple shipping firmware
-versions.
+Decrypts Amlogic-signed blobs with Spotify's leaked production key, for static
+analysis of vendor BL33 / DTB / kernel images. See `-h` for the input modes.
 
-What this handles
------------------
+The maintained implementation is `fip-tool decrypt`; this is kept for
+reference and cross-checking.
 
-  - **FIP body**: the encrypted payload that lives in `bootloader.dump`
-    (offset 0x10000..0x130000) or in the standalone fip_a / fip_b partitions.
-    Plain AES-256-CBC, zero IV, 16-byte block aligned. Per-section "IV reset"
-    in Amlogic terminology only affects the first 16-byte block at each
-    sub-section boundary (which is the section's MAC slot anyway and decodes
-    as noise — informational only, no useful data lost).
+Non-obvious bits:
 
-  - **DTB partition**: the dedicated eMMC area where vendor u-boot stashes
-    its panel/board DTB. Same key, same cipher mode. Has a CRC32 footer for
-    integrity (Amlogic computes the field in `_verify_dtb_checksum()`),
-    and may optionally have an RSA signature appended (see `Sig Check 1497`
-    error in vendor `[store]decrypt dtb` path). For our purposes, only the
-    plaintext DTB is interesting; the signature is optional.
+  - The AES-256 key is at offsets 0x1173 and 0x1B20 inside `aml-user-key.sig`
+    (redundant copies) and is re-extracted on every run, so the tool stays
+    self-contained against the key file. How those offsets were found:
+    ../docs/secure-boot.md.
 
-  - **Generic AES-256-CBC zero-IV blobs**: passing `--raw` skips Amlogic
-    structure parsing and just decrypts the input file as a flat ciphertext
-    stream.
+  - Amlogic's per-section "IV reset" only affects the first 16-byte block at
+    each sub-section boundary. That block is the section's MAC slot and
+    decodes as noise, so nothing useful is lost by ignoring it.
 
-What this does NOT handle
--------------------------
+  - The DTB area carries a CRC32 footer and may have an RSA signature
+    appended (vendor's `Sig Check 1497` path). Only the plaintext matters
+    here; the signature is not verified.
 
-  - **BL33 LZ4 decompression**: vendor BL33 is LZ4-compressed inside the
-    AES envelope, in Amlogic's "LZ4C" container (BL31 inflates it at
-    runtime — "BL33 decompress pass" log line). It carries no standard
-    LZ4 frame magic, but the container is plain LZ4 block format behind a
-    small custom header and *does* unpack statically — no RAM-dump needed.
-    This Python tool doesn't implement it; use the Go tool instead:
-    `fip-tool decrypt -bootloader -bl33 -o u-boot.bin bootloader.dump`
-    (see `fip-tool/lz4unwrap.go` for the format).
-
-  - **RSA signature verification**: we extract the AES key only. RSA
-    private-key reconstruction from `aml-user-key.sig` is out of scope —
-    use Amlogic's `aml_encrypt_g12a` if you need to re-sign.
-
-Key extraction
---------------
-
-The AES-256 key is stored at offsets 0x1173 and 0x1B20 within
-`aml-user-key.sig` (redundant copies). We auto-extract it on each invocation
-to keep this tool self-contained against the key file.
-
-Reference
----------
-
-The encryption format was reverse-engineered by:
-
-  1. Tracing `aml_encrypt_g12a --bootsig` with `strace` to confirm the tool
-     reads the key file in full (no offset-specific access — the bundle is
-     parsed in-process).
-  2. Observing that the first 16-byte plaintext block of every encrypted
-     FIP section is all-zeros (the section's "MAC slot"), which means
-     `C[0] = AES_ENC(K, 0)` for the unknown key K.
-  3. Brute-force matching `AES_ENC(window, 0)` against the observed `C[0]`
-     for every 16-byte and 32-byte window in `aml-user-key.sig`.
-  4. The matching 32-byte window at offset 0x1173 IS the AES-256 key.
-
-Full forensic trail in `fip_unpack/FIP_NOTES.md` and the `scripts/`
-directory commit history.
+Not handled: **BL33 LZ4 decompression.** Vendor BL33 is LZ4-compressed inside
+the AES envelope in Amlogic's "LZ4C" container — no standard frame magic, but
+it does unpack statically. Use the Go tool:
+`fip-tool decrypt -bootloader -bl33 -o u-boot.bin bootloader.dump`
+(format in `fip-tool/lz4unwrap.go`).
 """
 import argparse
 import struct
