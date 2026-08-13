@@ -66,8 +66,22 @@ AML_USB_BURN_PID = 0xc003
 
 def make_info_sector():
     """Build the storage_emmc_boot_info struct that goes at LBA 0 of
-    boot0 and boot1. BL2 reads this AFTER mask ROM hands off, to find
-    DDR-init parameters in user-area reserved region.
+    boot0 and boot1, byte-identical to the vendor's
+    amlmmc_write_info_sector().
+
+    The ddr.addr/ddr.size fields nominally point BL2 at DDR-init
+    parameters in the user area's reserved region. On our GPT layout
+    there is no reserved region — rsv_base 0x12000 + ddr.addr 0x4000
+    is LBA 0x16000, which is inside boot_a — so BL2 has been reading
+    our FAT filesystem as "DDR timing" on every boot, harmlessly.
+
+    Verified on hardware 2026-08-12: zeroing ddr.addr and ddr.size on
+    *both* boot0 and boot1 (checksum recomputed) boots to Linux
+    normally. BL2 does not consume them; the timings that actually run
+    are compiled into BL2 itself (vendor firmware/timing.c). We keep
+    the vendor values regardless, so the sector stays identical to a
+    stock one and `stock` mode restores a layout where the reserved
+    region really does exist.
 
     Layout (from spsgsb/uboot include/amlogic/aml_mmc.h):
 

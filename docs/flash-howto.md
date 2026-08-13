@@ -222,9 +222,19 @@ This works even with a completely zeroed eMMC. Mask ROM lives on-die.
   flashthing) derive the sector count from the image length and get
   this right; hand-typed `mmc write` invocations are where it bites.
 
-- **Forgetting the info_sector** — if you write 2 MiB at LBA 1
-  starting with BL2, mask ROM is happy but BL2 will hang after a few
-  prints because it can't find DDR params. info_sector is required.
+- **Forgetting the info_sector** — BL2 must live at LBA 1 with a
+  512-byte info_sector ahead of it. Write BL2 at LBA 0 and everything
+  is one sector out of place.
+
+  Note the info_sector's DDR fields are *not* what makes it required.
+  They nominally point BL2 at DDR parameters in the user area's
+  reserved region, but our GPT layout has no reserved region — the
+  pointer resolves to LBA 0x16000, inside boot_a — and BL2 boots fine
+  anyway. Confirmed on hardware: zeroing ddr.addr and ddr.size on both
+  boot0 and boot1, with the checksum recomputed, boots to Linux
+  normally. The DDR timings that actually run are compiled into BL2
+  (vendor firmware/timing.c). What the sector has to be is *present
+  and well-formed*, so BL2 lands at the right offset.
 
 - **Wiping boot0/boot1 then can't get into burn mode** — mask ROM
   still drops to USB Mode in this case (no valid BL2 found). Hold

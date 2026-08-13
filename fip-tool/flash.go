@@ -27,7 +27,20 @@ const (
 )
 
 // makeInfoSector builds the storage_emmc_boot_info struct that goes at LBA 0
-// of boot0/boot1 (BL2 reads it post-handoff to find DDR-init params).
+// of boot0/boot1, byte-identical to the vendor's amlmmc_write_info_sector().
+//
+// The ddr.addr/ddr.size fields nominally point BL2 at DDR-init parameters in
+// the user area's reserved region — but we terraformed the user area to GPT,
+// so there is no reserved region: rsv_base 0x12000 + ddr.addr 0x4000 lands at
+// LBA 0x16000, inside boot_a. BL2 has therefore been reading our FAT
+// filesystem as "DDR timing" on every boot of every unit, harmlessly.
+//
+// Verified on hardware 2026-08-12: zeroing ddr.addr and ddr.size on *both*
+// boot0 and boot1 (checksum recomputed) boots to Linux normally. BL2 does not
+// consume these fields; the timings that actually run are compiled into BL2
+// itself (vendor firmware/timing.c). We keep the vendor values anyway so the
+// sector stays identical to a stock one — they cost nothing and `stock` mode
+// restores a layout where the reserved region does exist.
 func makeInfoSector() []byte {
 	buf := make([]byte, infoSectorSize)
 	binary.LittleEndian.PutUint32(buf[0:], 1)                     // version
