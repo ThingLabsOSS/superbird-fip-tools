@@ -226,15 +226,24 @@ This works even with a completely zeroed eMMC. Mask ROM lives on-die.
   512-byte info_sector ahead of it. Write BL2 at LBA 0 and everything
   is one sector out of place.
 
-  Note the info_sector's DDR fields are *not* what makes it required.
-  They nominally point BL2 at DDR parameters in the user area's
-  reserved region, but our GPT layout has no reserved region — the
-  pointer resolves to LBA 0x16000, inside boot_a — and BL2 boots fine
-  anyway. Confirmed on hardware: zeroing ddr.addr and ddr.size on both
-  boot0 and boot1, with the checksum recomputed, boots to Linux
-  normally. The DDR timings that actually run are compiled into BL2
-  (vendor firmware/timing.c). What the sector has to be is *present
-  and well-formed*, so BL2 lands at the right offset.
+  The *contents* turn out not to matter at all. The DDR fields
+  nominally point BL2 at parameters in the user area's reserved
+  region, but our GPT layout has none — the pointer resolves to LBA
+  0x16000, inside boot_a — and BL2 has been reading our FAT
+  filesystem as "DDR timing" on every boot without caring. Confirmed
+  on hardware, escalating: zeroing ddr.addr/ddr.size on both slots
+  boots normally, and so does zeroing all 512 bytes on both slots.
+  The timings that actually run are compiled into BL2 (vendor
+  firmware/timing.c).
+
+  So the sector is a 512-byte spacer as far as our boot path is
+  concerned. Write it anyway — it costs nothing and keeps the image
+  identical to a stock one — but the thing that actually matters is
+  that BL2 begins at LBA 1.
+
+  (An all-zero sector has a self-consistent checksum, so that test
+  does not prove BL2 skips validation entirely — only that zeros
+  pass. Non-zero garbage at LBA 0 would settle it.)
 
 - **Wiping boot0/boot1 then can't get into burn mode** — mask ROM
   still drops to USB Mode in this case (no valid BL2 found). Hold

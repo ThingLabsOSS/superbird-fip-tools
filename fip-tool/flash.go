@@ -35,12 +35,21 @@ const (
 // LBA 0x16000, inside boot_a. BL2 has therefore been reading our FAT
 // filesystem as "DDR timing" on every boot of every unit, harmlessly.
 //
-// Verified on hardware 2026-08-12: zeroing ddr.addr and ddr.size on *both*
-// boot0 and boot1 (checksum recomputed) boots to Linux normally. BL2 does not
-// consume these fields; the timings that actually run are compiled into BL2
-// itself (vendor firmware/timing.c). We keep the vendor values anyway so the
-// sector stays identical to a stock one — they cost nothing and `stock` mode
-// restores a layout where the reserved region does exist.
+// Verified on hardware 2026-08-12, escalating: zeroing ddr.addr/ddr.size on
+// both boot0 and boot1 (checksum recomputed) boots to Linux normally, and so
+// does zeroing all 512 bytes on both slots. For our boot path the whole struct
+// is decorative — its only established job is to occupy LBA 0 so BL2 starts at
+// LBA 1. The timings that actually run are compiled into BL2 (vendor
+// firmware/timing.c).
+//
+// Caveat: an all-zero sector has a self-consistent checksum (127 zeros sum to
+// zero), so that test cannot separate "BL2 ignores the sector" from "BL2
+// checks the checksum and zeros pass". Non-zero garbage at LBA 0 would settle
+// it; not done.
+//
+// We write the vendor values regardless: they cost nothing, keep the sector
+// identical to a stock one, and `stock` mode restores a layout where the
+// reserved region does exist.
 func makeInfoSector() []byte {
 	buf := make([]byte, infoSectorSize)
 	binary.LittleEndian.PutUint32(buf[0:], 1)                     // version
