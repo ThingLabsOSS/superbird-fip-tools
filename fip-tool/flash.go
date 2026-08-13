@@ -35,17 +35,13 @@ const (
 // LBA 0x16000, inside boot_a. BL2 has therefore been reading our FAT
 // filesystem as "DDR timing" on every boot of every unit, harmlessly.
 //
-// Verified on hardware 2026-08-12, escalating: zeroing ddr.addr/ddr.size on
-// both boot0 and boot1 (checksum recomputed) boots to Linux normally, and so
-// does zeroing all 512 bytes on both slots. For our boot path the whole struct
-// is decorative — its only established job is to occupy LBA 0 so BL2 starts at
-// LBA 1. The timings that actually run are compiled into BL2 (vendor
+// Verified on hardware 2026-08-12, escalating, on both slots each time:
+// zeroing ddr.addr/ddr.size (checksum recomputed) boots; zeroing all 512 bytes
+// boots; filling all 512 bytes with non-zero garbage, a nonsense version and a
+// deliberately wrong checksum also boots. So BL2 does not read this sector at
+// all — its only job is to occupy LBA 0 so BL2 starts at LBA 1, a 512-byte
+// spacer. The timings that actually run are compiled into BL2 (vendor
 // firmware/timing.c).
-//
-// Caveat: an all-zero sector has a self-consistent checksum (127 zeros sum to
-// zero), so that test cannot separate "BL2 ignores the sector" from "BL2
-// checks the checksum and zeros pass". Non-zero garbage at LBA 0 would settle
-// it; not done.
 //
 // We write the vendor values regardless: they cost nothing, keep the sector
 // identical to a stock one, and `stock` mode restores a layout where the

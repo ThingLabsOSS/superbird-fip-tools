@@ -75,19 +75,16 @@ def make_info_sector():
     is LBA 0x16000, which is inside boot_a — so BL2 has been reading
     our FAT filesystem as "DDR timing" on every boot, harmlessly.
 
-    Verified on hardware 2026-08-12, escalating:
-      - zeroing ddr.addr/ddr.size on both boot0 and boot1 (checksum
-        recomputed) -> boots to Linux normally;
-      - zeroing all 512 bytes on both slots -> also boots normally.
+    Verified on hardware 2026-08-12, escalating, on both slots each
+    time:
+      - zeroing ddr.addr/ddr.size (checksum recomputed) -> boots;
+      - zeroing all 512 bytes -> boots;
+      - filling all 512 bytes with non-zero garbage, nonsense version
+        and a deliberately wrong checksum -> also boots.
 
-    So for our boot path the whole struct is decorative: its only
-    established job is to occupy LBA 0 so BL2 starts at LBA 1. The DDR
-    timings that actually run are compiled into BL2 (vendor
-    firmware/timing.c). Caveat: an all-zero sector has a
-    self-consistent checksum (127 zeros sum to zero), so that second
-    test cannot tell "BL2 ignores the sector" apart from "BL2 checks
-    the checksum and zeros pass". Filling LBA 0 with non-zero garbage
-    would settle it; not done.
+    So BL2 does not read this sector at all. Its only job is to occupy
+    LBA 0 so BL2 starts at LBA 1 — a 512-byte spacer. The DDR timings
+    that actually run are compiled into BL2 (vendor firmware/timing.c).
 
     We write the vendor values regardless — they cost nothing, keep
     the sector identical to a stock one, and `stock` mode restores a

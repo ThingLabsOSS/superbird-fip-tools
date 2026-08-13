@@ -236,14 +236,14 @@ This works even with a completely zeroed eMMC. Mask ROM lives on-die.
   The timings that actually run are compiled into BL2 (vendor
   firmware/timing.c).
 
-  So the sector is a 512-byte spacer as far as our boot path is
-  concerned. Write it anyway — it costs nothing and keeps the image
-  identical to a stock one — but the thing that actually matters is
-  that BL2 begins at LBA 1.
+  Pushed further: filling all 512 bytes with non-zero garbage — a
+  nonsense version and a deliberately wrong checksum — boots too. BL2
+  does not read this sector at all. It is a 512-byte spacer, and the
+  only thing that matters is that BL2 begins at LBA 1.
 
-  (An all-zero sector has a self-consistent checksum, so that test
-  does not prove BL2 skips validation entirely — only that zeros
-  pass. Non-zero garbage at LBA 0 would settle it.)
+  Write a proper one anyway: it costs nothing and keeps the image
+  identical to a stock one, which matters for `stock` recovery
+  flashes.
 
 - **Wiping boot0/boot1 then can't get into burn mode** — mask ROM
   still drops to USB Mode in this case (no valid BL2 found). Hold
