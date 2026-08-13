@@ -46,11 +46,14 @@ DDR_PARAMETER_OFFSET = 8  * 1024 * 1024   # relative to reserved
 DDR_PARAMETER_SIZE   = 4 * 512            # 0x800 bytes
 INFO_SECTOR_SIZE     = 512
 # Image is exactly 2 MiB total (info_sector + 2 MiB - 512 B of BL2+FIP).
-# Sized to fit the smaller boot0/boot1 hwpart variant (BOOT_SIZE_MULT=16
-# → 2 MiB partitions) — the larger variant (BOOT_SIZE_MULT=32 → 4 MiB)
-# accommodates this trivially. Going one sector beyond 2 MiB makes
-# `mmc write` reject the larger-variant config too:
+# 2 MiB is a hard ceiling, not a comfortable target: boot partition size
+# varies by fitted eMMC part. Measured across seven field units, every
+# Samsung S40004 has 4 MiB boot partitions (BOOT_SIZE_MULT=32) and every
+# Kioxia 004GA0 has exactly 2 MiB (BOOT_SIZE_MULT=16). One sector beyond
+# 2 MiB is therefore fine on half the fleet and fatal on the other half:
 #   `MMC: block number 0x1001 exceeds max(0x1000)`.
+# If the image ever needs to grow, it breaks Kioxia units only — which
+# is the most annoying possible failure mode, so don't.
 # Actual BL2 + FIP content is only ~1.3 MiB; the tail is zero pad.
 BOOTLOADER_CONTENT_SIZE = 2 * 1024 * 1024 - INFO_SECTOR_SIZE  # = 4095 sectors
 TOTAL_SECTORS = (INFO_SECTOR_SIZE + BOOTLOADER_CONTENT_SIZE) // 512  # 4096

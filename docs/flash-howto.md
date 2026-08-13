@@ -199,11 +199,28 @@ This works even with a completely zeroed eMMC. Mask ROM lives on-die.
 
 ## Common pitfalls
 
-- **Writing your image at LBA 0 instead of LBA 1** — if you bypass
-  `flash_boot_partition.py` and write to boot0/boot1 directly with
-  `mmc write 0x... 0 0x1000`, mask ROM will see BL2 at the wrong
-  offset and fail with CHK:1F three times. Always use the script
-  (which writes 4097 sectors and includes the info_sector at LBA 0).
+- **Writing BL2 at LBA 0 instead of LBA 1** — the boot partition
+  layout is info_sector at LBA 0, then BL2+FIP from LBA 1. Our image
+  already contains the info_sector as its own first sector, so writing
+  the whole image at LBA 0 is correct. What breaks is writing a bare
+  BL2+FIP blob (no info_sector) at LBA 0: everything lands one sector
+  early, mask ROM sees BL2 at the wrong offset and fails with CHK:1F
+  three times.
+
+- **Writing 4097 sectors** — the image is 2 MiB, which is **4096**
+  sectors (`0x1000`), info_sector included. `0x1001` is one sector
+  past the end. That is survivable on units with 4 MiB boot
+  partitions and fails outright on units with 2 MiB ones:
+
+      MMC: block number 0x1001 exceeds max(0x1000)
+
+  Boot partition size is not uniform across the fleet — measured over
+  seven units, every Samsung S40004 has 4 MiB and every Kioxia 004GA0
+  has 2 MiB. So 2 MiB is a hard ceiling for the image, not a
+  comfortable target, and a recipe that overruns it only fails for
+  half of users. All three flashers (this script, fip-tool, and
+  flashthing) derive the sector count from the image length and get
+  this right; hand-typed `mmc write` invocations are where it bites.
 
 - **Forgetting the info_sector** — if you write 2 MiB at LBA 1
   starting with BL2, mask ROM is happy but BL2 will hang after a few

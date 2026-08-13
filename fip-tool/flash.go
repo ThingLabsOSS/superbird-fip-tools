@@ -15,6 +15,12 @@ const (
 	mmcReservedOffset   = 36 * 1024 * 1024 // 0x02400000
 	ddrParameterOffset  = 8 * 1024 * 1024
 	ddrParameterSize    = 4 * 512
+	// 2 MiB total is a hard ceiling, not a comfortable target: boot
+	// partition size varies by fitted eMMC part. Across seven field
+	// units, every Samsung S40004 has 4 MiB boot partitions and every
+	// Kioxia 004GA0 has exactly 2 MiB, so an image one sector over is
+	// fine on half the fleet and rejected on the other half with
+	// "MMC: block number 0x1001 exceeds max(0x1000)".
 	bootloaderContentSz = 2*1024*1024 - infoSectorSize // 4095 sectors
 	totalSectors        = (infoSectorSize + bootloaderContentSz) / 512
 	dramStagingAddr     = 0x13000000
